@@ -908,6 +908,31 @@ func (_m *TeamStore) SearchAll(term string) ([]*model.Team, *model.AppError) {
 	return r0, r1
 }
 
+// SearchAllPaged provides a mock function with given fields: term
+func (_m *TeamStore) SearchAllPaged(term string) ([]*model.Team, int64, *model.AppError) {
+	ret := _m.Called(term)
+
+	var r0 []*model.Team
+	if rf, ok := ret.Get(0).(func(string) []*model.Team); ok {
+		r0 = rf(term)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*model.Team)
+		}
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func(string) *model.AppError); ok {
+		r1 = rf(term)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, 0, r1
+}
+
 // SearchOpen provides a mock function with given fields: term
 func (_m *TeamStore) SearchOpen(term string) ([]*model.Team, *model.AppError) {
 	ret := _m.Called(term)
