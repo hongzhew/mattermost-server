@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package migrations
 
@@ -7,11 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/config"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/v5/app"
+	"github.com/mattermost/mattermost-server/v5/config"
+	"github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/utils"
 )
 
 type TestHelper struct {
@@ -65,7 +65,7 @@ func setupTestHelper(enterprise bool) *TestHelper {
 
 	th.App.DoAppMigrations()
 
-	th.App.Srv.Store.MarkSystemRanUnitTests()
+	th.App.Srv().Store.MarkSystemRanUnitTests()
 
 	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.TeamSettings.EnableOpenServer = true })
 
@@ -254,7 +254,7 @@ func (me *TestHelper) TearDown() {
 }
 
 func (me *TestHelper) ResetRoleMigration() {
-	sqlSupplier := mainHelper.GetSqlSupplier()
+	sqlSupplier := mainHelper.GetSQLSupplier()
 	if _, err := sqlSupplier.GetMaster().Exec("DELETE from Roles"); err != nil {
 		panic(err)
 	}
@@ -267,14 +267,14 @@ func (me *TestHelper) ResetRoleMigration() {
 }
 
 func (me *TestHelper) DeleteAllJobsByTypeAndMigrationKey(jobType string, migrationKey string) {
-	jobs, err := me.App.Srv.Store.Job().GetAllByType(model.JOB_TYPE_MIGRATIONS)
+	jobs, err := me.App.Srv().Store.Job().GetAllByType(model.JOB_TYPE_MIGRATIONS)
 	if err != nil {
 		panic(err)
 	}
 
 	for _, job := range jobs {
 		if key, ok := job.Data[JOB_DATA_KEY_MIGRATION]; ok && key == migrationKey {
-			if _, err = me.App.Srv.Store.Job().Delete(job.Id); err != nil {
+			if _, err = me.App.Srv().Store.Job().Delete(job.Id); err != nil {
 				panic(err)
 			}
 		}

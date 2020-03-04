@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package app
 
@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	goi18n "github.com/mattermost/go-i18n/i18n"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/utils"
 )
 
 var usage = `Mattermost testing commands to help configure the system
@@ -118,6 +118,14 @@ func (me *LoadTestProvider) DoCommand(a *App, args *model.CommandArgs, message s
 		return me.UsersCommand(a, args, message)
 	}
 
+	if strings.HasPrefix(message, "activate_user") {
+		return me.ActivateUserCommand(a, args, message)
+	}
+
+	if strings.HasPrefix(message, "deactivate_user") {
+		return me.DeActivateUserCommand(a, args, message)
+	}
+
 	if strings.HasPrefix(message, "channels") {
 		return me.ChannelsCommand(a, args, message)
 	}
@@ -210,7 +218,7 @@ func (me *LoadTestProvider) SetupCommand(a *App, args *model.CommandArgs, messag
 			}
 		}
 	} else {
-		team, err := a.Srv.Store.Team().Get(args.TeamId)
+		team, err := a.Srv().Store.Team().Get(args.TeamId)
 		if err != nil {
 			return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 		}
@@ -229,6 +237,22 @@ func (me *LoadTestProvider) SetupCommand(a *App, args *model.CommandArgs, messag
 	return &model.CommandResponse{Text: "Created environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 }
 
+func (me *LoadTestProvider) ActivateUserCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	user_id := strings.TrimSpace(strings.TrimPrefix(message, "activate_user"))
+	if err := a.UpdateUserActive(user_id, true); err != nil {
+		return &model.CommandResponse{Text: "Failed to activate user", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+	}
+	return &model.CommandResponse{Text: "Activated user", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+}
+
+func (me *LoadTestProvider) DeActivateUserCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
+	user_id := strings.TrimSpace(strings.TrimPrefix(message, "deactivate_user"))
+	if err := a.UpdateUserActive(user_id, false); err != nil {
+		return &model.CommandResponse{Text: "Failed to deactivate user", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+	}
+	return &model.CommandResponse{Text: "DeActivated user", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
+}
+
 func (me *LoadTestProvider) UsersCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	cmd := strings.TrimSpace(strings.TrimPrefix(message, "users"))
 
@@ -243,7 +267,7 @@ func (me *LoadTestProvider) UsersCommand(a *App, args *model.CommandArgs, messag
 		usersr = utils.Range{Begin: 2, End: 5}
 	}
 
-	team, err := a.Srv.Store.Team().Get(args.TeamId)
+	team, err := a.Srv().Store.Team().Get(args.TeamId)
 	if err != nil {
 		return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
@@ -270,7 +294,7 @@ func (me *LoadTestProvider) ChannelsCommand(a *App, args *model.CommandArgs, mes
 		channelsr = utils.Range{Begin: 2, End: 5}
 	}
 
-	team, err := a.Srv.Store.Team().Get(args.TeamId)
+	team, err := a.Srv().Store.Team().Get(args.TeamId)
 	if err != nil {
 		return &model.CommandResponse{Text: "Failed to create testing environment", ResponseType: model.COMMAND_RESPONSE_TYPE_EPHEMERAL}
 	}
@@ -287,7 +311,7 @@ func (me *LoadTestProvider) ChannelsCommand(a *App, args *model.CommandArgs, mes
 func (me *LoadTestProvider) ThreadedPostCommand(a *App, args *model.CommandArgs, message string) *model.CommandResponse {
 	var usernames []string
 	options := &model.UserGetOptions{InTeamId: args.TeamId, Page: 0, PerPage: 1000}
-	if profileUsers, err := a.Srv.Store.User().GetProfiles(options); err == nil {
+	if profileUsers, err := a.Srv().Store.User().GetProfiles(options); err == nil {
 		usernames = make([]string, len(profileUsers))
 		i := 0
 		for _, userprof := range profileUsers {
@@ -336,7 +360,7 @@ func (me *LoadTestProvider) PostsCommand(a *App, args *model.CommandArgs, messag
 
 	var usernames []string
 	options := &model.UserGetOptions{InTeamId: args.TeamId, Page: 0, PerPage: 1000}
-	if profileUsers, err := a.Srv.Store.User().GetProfiles(options); err == nil {
+	if profileUsers, err := a.Srv().Store.User().GetProfiles(options); err == nil {
 		usernames = make([]string, len(profileUsers))
 		i := 0
 		for _, userprof := range profileUsers {

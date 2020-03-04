@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package app
 
@@ -13,10 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-server/einterfaces/mocks"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/plugin/plugintest/mock"
-	"github.com/mattermost/mattermost-server/store/storetest"
+	"github.com/mattermost/mattermost-server/v5/einterfaces/mocks"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/plugin/plugintest/mock"
+	"github.com/mattermost/mattermost-server/v5/store/storetest"
+	storemocks "github.com/mattermost/mattermost-server/v5/store/storetest/mocks"
 )
 
 func TestCreatePostDeduplicate(t *testing.T) {
@@ -50,8 +51,8 @@ func TestCreatePostDeduplicate(t *testing.T) {
 			package main
 
 			import (
-				"github.com/mattermost/mattermost-server/plugin"
-				"github.com/mattermost/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/v5/plugin"
+				"github.com/mattermost/mattermost-server/v5/model"
 			)
 
 			type MyPlugin struct {
@@ -99,8 +100,8 @@ func TestCreatePostDeduplicate(t *testing.T) {
 			package main
 
 			import (
-				"github.com/mattermost/mattermost-server/plugin"
-				"github.com/mattermost/mattermost-server/model"
+				"github.com/mattermost/mattermost-server/v5/plugin"
+				"github.com/mattermost/mattermost-server/v5/model"
 				"time"
 			)
 
@@ -192,13 +193,13 @@ func TestAttachFilesToPost(t *testing.T) {
 		th := Setup(t).InitBasic()
 		defer th.TearDown()
 
-		info1, err := th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
+		info1, err := th.App.Srv().Store.FileInfo().Save(&model.FileInfo{
 			CreatorId: th.BasicUser.Id,
 			Path:      "path.txt",
 		})
 		require.Nil(t, err)
 
-		info2, err := th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
+		info2, err := th.App.Srv().Store.FileInfo().Save(&model.FileInfo{
 			CreatorId: th.BasicUser.Id,
 			Path:      "path.txt",
 		})
@@ -219,14 +220,14 @@ func TestAttachFilesToPost(t *testing.T) {
 		th := Setup(t).InitBasic()
 		defer th.TearDown()
 
-		info1, err := th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
+		info1, err := th.App.Srv().Store.FileInfo().Save(&model.FileInfo{
 			CreatorId: th.BasicUser.Id,
 			Path:      "path.txt",
 			PostId:    model.NewId(),
 		})
 		require.Nil(t, err)
 
-		info2, err := th.App.Srv.Store.FileInfo().Save(&model.FileInfo{
+		info2, err := th.App.Srv().Store.FileInfo().Save(&model.FileInfo{
 			CreatorId: th.BasicUser.Id,
 			Path:      "path.txt",
 		})
@@ -445,8 +446,19 @@ func TestPostChannelMentions(t *testing.T) {
 }
 
 func TestImageProxy(t *testing.T) {
-	th := Setup(t).InitBasic()
+	th := SetupWithStoreMock(t)
 	defer th.TearDown()
+
+	mockStore := th.App.Srv().Store.(*storemocks.Store)
+	mockUserStore := storemocks.UserStore{}
+	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
+	mockPostStore := storemocks.PostStore{}
+	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockSystemStore := storemocks.SystemStore{}
+	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
+	mockStore.On("User").Return(&mockUserStore)
+	mockStore.On("Post").Return(&mockPostStore)
+	mockStore.On("System").Return(&mockSystemStore)
 
 	th.App.UpdateConfig(func(cfg *model.Config) {
 		*cfg.ServiceSettings.SiteURL = "http://mymattermost.com"
@@ -577,7 +589,7 @@ func TestMaxPostSize(t *testing.T) {
 			mockStore.PostStore.On("GetMaxPostSize").Return(testCase.StoreMaxPostSize)
 
 			app := App{
-				Srv: &Server{
+				srv: &Server{
 					Store: mockStore,
 				},
 			}
@@ -601,7 +613,7 @@ func TestDeletePostWithFileAttachments(t *testing.T) {
 	info1, err := th.App.DoUploadFile(time.Date(2007, 2, 4, 1, 2, 3, 4, time.Local), teamId, channelId, userId, filename, data)
 	require.Nil(t, err)
 	defer func() {
-		th.App.Srv.Store.FileInfo().PermanentDelete(info1.Id)
+		th.App.Srv().Store.FileInfo().PermanentDelete(info1.Id)
 		th.App.RemoveFile(info1.Path)
 	}()
 
@@ -668,6 +680,56 @@ func TestCreatePost(t *testing.T) {
 		require.Nil(t, err)
 		assert.Equal(t, "![image]("+proxiedImageURL+")", rpost.Message)
 	})
+
+	t.Run("Sets prop MENTION_HIGHLIGHT_DISABLED when it should", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+		th.AddUserToChannel(th.BasicUser, th.BasicChannel)
+
+		t.Run("Does not set prop when user has USE_CHANNEL_MENTIONS", func(t *testing.T) {
+			postWithNoMention := &model.Post{
+				ChannelId: th.BasicChannel.Id,
+				Message:   "This post does not have mentions",
+				UserId:    th.BasicUser.Id,
+			}
+			rpost, err := th.App.CreatePost(postWithNoMention, th.BasicChannel, false)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+
+			postWithMention := &model.Post{
+				ChannelId: th.BasicChannel.Id,
+				Message:   "This post has @here mention @all",
+				UserId:    th.BasicUser.Id,
+			}
+			rpost, err = th.App.CreatePost(postWithMention, th.BasicChannel, false)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+		})
+
+		t.Run("Sets prop when post has mentions and user does not have USE_CHANNEL_MENTIONS", func(t *testing.T) {
+			th.RemovePermissionFromRole(model.PERMISSION_USE_CHANNEL_MENTIONS.Id, model.CHANNEL_USER_ROLE_ID)
+
+			postWithNoMention := &model.Post{
+				ChannelId: th.BasicChannel.Id,
+				Message:   "This post does not have mentions",
+				UserId:    th.BasicUser.Id,
+			}
+			rpost, err := th.App.CreatePost(postWithNoMention, th.BasicChannel, false)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+
+			postWithMention := &model.Post{
+				ChannelId: th.BasicChannel.Id,
+				Message:   "This post has @here mention @all",
+				UserId:    th.BasicUser.Id,
+			}
+			rpost, err = th.App.CreatePost(postWithMention, th.BasicChannel, false)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props[model.POST_PROPS_MENTION_HIGHLIGHT_DISABLED], true)
+
+			th.AddPermissionToRole(model.PERMISSION_USE_CHANNEL_MENTIONS.Id, model.CHANNEL_USER_ROLE_ID)
+		})
+	})
 }
 
 func TestPatchPost(t *testing.T) {
@@ -703,6 +765,53 @@ func TestPatchPost(t *testing.T) {
 		rpost, err = th.App.PatchPost(rpost.Id, patch)
 		require.Nil(t, err)
 		assert.Equal(t, "![image]("+proxiedImageURL+")", rpost.Message)
+	})
+
+	t.Run("Sets Prop MENTION_HIGHLIGHT_DISABLED when it should", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		th.AddUserToChannel(th.BasicUser, th.BasicChannel)
+
+		post := &model.Post{
+			ChannelId: th.BasicChannel.Id,
+			Message:   "This post does not have mentions",
+			UserId:    th.BasicUser.Id,
+		}
+
+		rpost, err := th.App.CreatePost(post, th.BasicChannel, false)
+		require.Nil(t, err)
+
+		t.Run("Does not set prop when user has USE_CHANNEL_MENTIONS", func(t *testing.T) {
+			patchWithNoMention := &model.PostPatch{Message: model.NewString("This patch has no channel mention")}
+
+			rpost, err = th.App.PatchPost(rpost.Id, patchWithNoMention)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+
+			patchWithMention := &model.PostPatch{Message: model.NewString("This patch has a mention now @here")}
+
+			rpost, err = th.App.PatchPost(rpost.Id, patchWithMention)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+		})
+
+		t.Run("Sets prop when user does not have USE_CHANNEL_MENTIONS", func(t *testing.T) {
+			th.RemovePermissionFromRole(model.PERMISSION_USE_CHANNEL_MENTIONS.Id, model.CHANNEL_USER_ROLE_ID)
+
+			patchWithNoMention := &model.PostPatch{Message: model.NewString("This patch still does not have a mention")}
+			rpost, err = th.App.PatchPost(rpost.Id, patchWithNoMention)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props, model.StringInterface{})
+
+			patchWithMention := &model.PostPatch{Message: model.NewString("This patch has a mention now @here")}
+
+			rpost, err = th.App.PatchPost(rpost.Id, patchWithMention)
+			require.Nil(t, err)
+			assert.Equal(t, rpost.Props[model.POST_PROPS_MENTION_HIGHLIGHT_DISABLED], true)
+
+			th.AddPermissionToRole(model.PERMISSION_USE_CHANNEL_MENTIONS.Id, model.CHANNEL_USER_ROLE_ID)
+		})
 	})
 }
 
@@ -837,7 +946,7 @@ func TestSearchPostsInTeamForUser(t *testing.T) {
 
 		es := &mocks.ElasticsearchInterface{}
 		es.On("SearchPosts", mock.Anything, mock.Anything, page, perPage).Return(resultsPage, nil, nil)
-		th.App.Elasticsearch = es
+		th.App.elasticsearch = es
 
 		results, err := th.App.SearchPostsInTeamForUser(searchTerm, th.BasicUser.Id, th.BasicTeam.Id, false, false, 0, page, perPage)
 
@@ -858,7 +967,7 @@ func TestSearchPostsInTeamForUser(t *testing.T) {
 
 		es := &mocks.ElasticsearchInterface{}
 		es.On("SearchPosts", mock.Anything, mock.Anything, page, perPage).Return(resultsPage, nil, nil)
-		th.App.Elasticsearch = es
+		th.App.elasticsearch = es
 
 		results, err := th.App.SearchPostsInTeamForUser(searchTerm, th.BasicUser.Id, th.BasicTeam.Id, false, false, 0, page, perPage)
 
@@ -875,7 +984,7 @@ func TestSearchPostsInTeamForUser(t *testing.T) {
 
 		es := &mocks.ElasticsearchInterface{}
 		es.On("SearchPosts", mock.Anything, mock.Anything, page, perPage).Return(nil, nil, &model.AppError{})
-		th.App.Elasticsearch = es
+		th.App.elasticsearch = es
 
 		results, err := th.App.SearchPostsInTeamForUser(searchTerm, th.BasicUser.Id, th.BasicTeam.Id, false, false, 0, page, perPage)
 
@@ -900,12 +1009,589 @@ func TestSearchPostsInTeamForUser(t *testing.T) {
 
 		es := &mocks.ElasticsearchInterface{}
 		es.On("SearchPosts", mock.Anything, mock.Anything, page, perPage).Return(nil, nil, &model.AppError{})
-		th.App.Elasticsearch = es
+		th.App.elasticsearch = es
 
 		results, err := th.App.SearchPostsInTeamForUser(searchTerm, th.BasicUser.Id, th.BasicTeam.Id, false, false, 0, page, perPage)
 
 		assert.Nil(t, err)
 		assert.Equal(t, []string{}, results.Order)
 		es.AssertExpectations(t)
+	})
+}
+
+func TestCountMentionsFromPost(t *testing.T) {
+	t.Run("should not count posts without mentions", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test3",
+		}, channel, false)
+		require.Nil(t, err)
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("should count keyword mentions", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.MENTION_KEYS_NOTIFY_PROP] = "apple"
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "apple",
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post1 and post3 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("should count channel-wide mentions when enabled", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.CHANNEL_MENTIONS_NOTIFY_PROP] = "true"
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@channel",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@all",
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post2 and post3 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("should not count channel-wide mentions when disabled for user", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.CHANNEL_MENTIONS_NOTIFY_PROP] = "false"
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@channel",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@all",
+		}, channel, false)
+		require.Nil(t, err)
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("should not count channel-wide mentions when disabled for channel", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.CHANNEL_MENTIONS_NOTIFY_PROP] = "true"
+
+		_, err := th.App.UpdateChannelMemberNotifyProps(map[string]string{
+			model.IGNORE_CHANNEL_MENTIONS_NOTIFY_PROP: model.IGNORE_CHANNEL_MENTIONS_ON,
+		}, channel.Id, user2.Id)
+		require.Nil(t, err)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@channel",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "@all",
+		}, channel, false)
+		require.Nil(t, err)
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("should count comment mentions when using COMMENTS_NOTIFY_ROOT", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.COMMENTS_NOTIFY_PROP] = model.COMMENTS_NOTIFY_ROOT
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			RootId:    post1.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		post3, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test3",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			RootId:    post3.Id,
+			Message:   "test4",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			RootId:    post3.Id,
+			Message:   "test5",
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post2 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("should count comment mentions when using COMMENTS_NOTIFY_ANY", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.COMMENTS_NOTIFY_PROP] = model.COMMENTS_NOTIFY_ANY
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			RootId:    post1.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		post3, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test3",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			RootId:    post3.Id,
+			Message:   "test4",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			RootId:    post3.Id,
+			Message:   "test5",
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post2 and post5 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("should count mentions caused by being added to the channel", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+			Type:      model.POST_ADD_TO_CHANNEL,
+			Props: map[string]interface{}{
+				model.POST_PROPS_ADDED_USER_ID: model.NewId(),
+			},
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test2",
+			Type:      model.POST_ADD_TO_CHANNEL,
+			Props: map[string]interface{}{
+				model.POST_PROPS_ADDED_USER_ID: user2.Id,
+			},
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test3",
+			Type:      model.POST_ADD_TO_CHANNEL,
+			Props: map[string]interface{}{
+				model.POST_PROPS_ADDED_USER_ID: user2.Id,
+			},
+		}, channel, false)
+		require.Nil(t, err)
+
+		// should be mentioned by post2 and post3
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 2, count)
+	})
+
+	t.Run("should return the number of posts made by the other user for a direct channel", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel, err := th.App.createDirectChannel(user1.Id, user2.Id)
+		require.Nil(t, err)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test",
+		}, channel, false)
+		require.Nil(t, err)
+
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 2, count)
+
+		count, err = th.App.countMentionsFromPost(user1, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("should not count mentions from the before the given post", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		_, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+		post2, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post1 and post3 should mention the user, but we only count post3
+
+		count, err := th.App.countMentionsFromPost(user2, post2)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("should not count mentions from the user's own posts", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post2 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("should include comments made before the given post when counting comment mentions", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		user2.NotifyProps[model.COMMENTS_NOTIFY_PROP] = model.COMMENTS_NOTIFY_ANY
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test1",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			RootId:    post1.Id,
+			Message:   "test2",
+		}, channel, false)
+		require.Nil(t, err)
+		post3, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test3",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			RootId:    post1.Id,
+			Message:   "test4",
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post4 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post3)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("should count mentions from the user's webhook posts", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   "test1",
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+		_, err = th.App.CreatePost(&model.Post{
+			UserId:    user2.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+			Props: map[string]interface{}{
+				"from_webhook": "true",
+			},
+		}, channel, false)
+		require.Nil(t, err)
+
+		// post3 should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, 1, count)
+	})
+
+	t.Run("should count multiple pages of mentions", func(t *testing.T) {
+		th := Setup(t).InitBasic()
+		defer th.TearDown()
+
+		user1 := th.BasicUser
+		user2 := th.BasicUser2
+
+		channel := th.CreateChannel(th.BasicTeam)
+		th.AddUserToChannel(user2, channel)
+
+		numPosts := 215
+
+		post1, err := th.App.CreatePost(&model.Post{
+			UserId:    user1.Id,
+			ChannelId: channel.Id,
+			Message:   fmt.Sprintf("@%s", user2.Username),
+		}, channel, false)
+		require.Nil(t, err)
+
+		for i := 0; i < numPosts-1; i++ {
+			_, err = th.App.CreatePost(&model.Post{
+				UserId:    user1.Id,
+				ChannelId: channel.Id,
+				Message:   fmt.Sprintf("@%s", user2.Username),
+			}, channel, false)
+			require.Nil(t, err)
+		}
+
+		// Every post should mention the user
+
+		count, err := th.App.countMentionsFromPost(user2, post1)
+
+		assert.Nil(t, err)
+		assert.Equal(t, numPosts, count)
 	})
 }

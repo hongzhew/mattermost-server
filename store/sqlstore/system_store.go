@@ -1,20 +1,20 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package sqlstore
 
 import (
 	"net/http"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/store"
 )
 
 type SqlSystemStore struct {
 	SqlStore
 }
 
-func NewSqlSystemStore(sqlStore SqlStore) store.SystemStore {
+func newSqlSystemStore(sqlStore SqlStore) store.SystemStore {
 	s := &SqlSystemStore{sqlStore}
 
 	for _, db := range sqlStore.GetAllConns() {
@@ -26,7 +26,7 @@ func NewSqlSystemStore(sqlStore SqlStore) store.SystemStore {
 	return s
 }
 
-func (s SqlSystemStore) CreateIndexesIfNotExists() {
+func (s SqlSystemStore) createIndexesIfNotExists() {
 }
 
 func (s SqlSystemStore) Save(system *model.System) *model.AppError {

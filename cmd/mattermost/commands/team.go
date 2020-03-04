@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package commands
 
@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/v5/app"
+	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/spf13/cobra"
 )
 
@@ -153,6 +154,7 @@ func createTeamCmdF(command *cobra.Command, args []string) error {
 		return errors.New("Display Name is required")
 	}
 	email, _ := command.Flags().GetString("email")
+	email = strings.ToLower(email)
 	useprivate, _ := command.Flags().GetBool("private")
 
 	teamType := model.TEAM_OPEN
@@ -310,7 +312,7 @@ func searchTeamCmdF(command *cobra.Command, args []string) error {
 	var teams []*model.Team
 
 	for _, searchTerm := range args {
-		foundTeams, err := a.SearchAllTeams(searchTerm)
+		foundTeams, _, err := a.SearchAllTeams(&model.TeamSearch{Term: searchTerm})
 		if err != nil {
 			return err
 		}

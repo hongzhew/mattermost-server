@@ -1,5 +1,5 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// See LICENSE.txt for license information.
 
 package web
 
@@ -9,14 +9,14 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mattermost/mattermost-server/app"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/utils"
+	"github.com/mattermost/mattermost-server/v5/app"
+	"github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/utils"
 )
 
 type Context struct {
-	App           *app.App
+	App           app.AppIface
 	Log           *mlog.Logger
 	Params        *Params
 	Err           *model.AppError
@@ -24,20 +24,20 @@ type Context struct {
 }
 
 func (c *Context) LogAudit(extraInfo string) {
-	audit := &model.Audit{UserId: c.App.Session.UserId, IpAddress: c.App.IpAddress, Action: c.App.Path, ExtraInfo: extraInfo, SessionId: c.App.Session.Id}
-	if err := c.App.Srv.Store.Audit().Save(audit); err != nil {
+	audit := &model.Audit{UserId: c.App.Session().UserId, IpAddress: c.App.IpAddress(), Action: c.App.Path(), ExtraInfo: extraInfo, SessionId: c.App.Session().Id}
+	if err := c.App.Srv().Store.Audit().Save(audit); err != nil {
 		c.LogError(err)
 	}
 }
 
 func (c *Context) LogAuditWithUserId(userId, extraInfo string) {
 
-	if len(c.App.Session.UserId) > 0 {
-		extraInfo = strings.TrimSpace(extraInfo + " session_user=" + c.App.Session.UserId)
+	if len(c.App.Session().UserId) > 0 {
+		extraInfo = strings.TrimSpace(extraInfo + " session_user=" + c.App.Session().UserId)
 	}
 
-	audit := &model.Audit{UserId: userId, IpAddress: c.App.IpAddress, Action: c.App.Path, ExtraInfo: extraInfo, SessionId: c.App.Session.Id}
-	if err := c.App.Srv.Store.Audit().Save(audit); err != nil {
+	audit := &model.Audit{UserId: userId, IpAddress: c.App.IpAddress(), Action: c.App.Path(), ExtraInfo: extraInfo, SessionId: c.App.Session().Id}
+	if err := c.App.Srv().Store.Audit().Save(audit); err != nil {
 		c.LogError(err)
 	}
 }
@@ -45,7 +45,7 @@ func (c *Context) LogAuditWithUserId(userId, extraInfo string) {
 func (c *Context) LogError(err *model.AppError) {
 	// Filter out 404s, endless reconnects and browser compatibility errors
 	if err.StatusCode == http.StatusNotFound ||
-		(c.App.Path == "/api/v3/users/websocket" && err.StatusCode == http.StatusUnauthorized) ||
+		(c.App.Path() == "/api/v3/users/websocket" && err.StatusCode == http.StatusUnauthorized) ||
 		err.Id == "web.check_browser_compatibility.app_error" {
 		c.LogDebug(err)
 	} else {
@@ -82,19 +82,19 @@ func (c *Context) LogDebug(err *model.AppError) {
 }
 
 func (c *Context) IsSystemAdmin() bool {
-	return c.App.SessionHasPermissionTo(c.App.Session, model.PERMISSION_MANAGE_SYSTEM)
+	return c.App.SessionHasPermissionTo(*c.App.Session(), model.PERMISSION_MANAGE_SYSTEM)
 }
 
 func (c *Context) SessionRequired() {
 	if !*c.App.Config().ServiceSettings.EnableUserAccessTokens &&
-		c.App.Session.Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN &&
-		c.App.Session.Props[model.SESSION_PROP_IS_BOT] != model.SESSION_PROP_IS_BOT_VALUE {
+		c.App.Session().Props[model.SESSION_PROP_TYPE] == model.SESSION_TYPE_USER_ACCESS_TOKEN &&
+		c.App.Session().Props[model.SESSION_PROP_IS_BOT] != model.SESSION_PROP_IS_BOT_VALUE {
 
 		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "UserAccessToken", http.StatusUnauthorized)
 		return
 	}
 
-	if len(c.App.Session.UserId) == 0 {
+	if len(c.App.Session().UserId) == 0 {
 		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "UserRequired", http.StatusUnauthorized)
 		return
 	}
@@ -107,11 +107,11 @@ func (c *Context) MfaRequired() {
 	}
 
 	// OAuth integrations are excepted
-	if c.App.Session.IsOAuth {
+	if c.App.Session().IsOAuth {
 		return
 	}
 
-	if user, err := c.App.GetUser(c.App.Session.UserId); err != nil {
+	if user, err := c.App.GetUser(c.App.Session().UserId); err != nil {
 		c.Err = model.NewAppError("", "api.context.session_expired.app_error", nil, "MfaRequired", http.StatusUnauthorized)
 		return
 	} else {
@@ -127,7 +127,7 @@ func (c *Context) MfaRequired() {
 
 		// Special case to let user get themself
 		subpath, _ := utils.GetSubpathFromConfig(c.App.Config())
-		if c.App.Path == path.Join(subpath, "/api/v4/users/me") {
+		if c.App.Path() == path.Join(subpath, "/api/v4/users/me") {
 			return
 		}
 
@@ -165,8 +165,16 @@ func (c *Context) SetInvalidUrlParam(parameter string) {
 	c.Err = NewInvalidUrlParamError(parameter)
 }
 
+func (c *Context) SetServerBusyError() {
+	c.Err = NewServerBusyError()
+}
+
+func (c *Context) SetCommandNotFoundError() {
+	c.Err = model.NewAppError("GetCommand", "store.sql_command.save.get.app_error", nil, "", http.StatusNotFound)
+}
+
 func (c *Context) HandleEtag(etag string, routeName string, w http.ResponseWriter, r *http.Request) bool {
-	metrics := c.App.Metrics
+	metrics := c.App.Metrics()
 	if et := r.Header.Get(model.HEADER_ETAG_CLIENT); len(etag) > 0 {
 		if et == etag {
 			w.Header().Set(model.HEADER_ETAG_SERVER, etag)
@@ -193,6 +201,10 @@ func NewInvalidUrlParamError(parameter string) *model.AppError {
 	err := model.NewAppError("Context", "api.context.invalid_url_param.app_error", map[string]interface{}{"Name": parameter}, "", http.StatusBadRequest)
 	return err
 }
+func NewServerBusyError() *model.AppError {
+	err := model.NewAppError("Context", "api.context.server_busy.app_error", nil, "", http.StatusServiceUnavailable)
+	return err
+}
 
 func (c *Context) SetPermissionError(permission *model.Permission) {
 	c.Err = c.App.MakePermissionError(permission)
@@ -212,7 +224,7 @@ func (c *Context) RequireUserId() *Context {
 	}
 
 	if c.Params.UserId == model.ME {
-		c.Params.UserId = c.App.Session.UserId
+		c.Params.UserId = c.App.Session().UserId
 	}
 
 	if len(c.Params.UserId) != 26 {
@@ -381,11 +393,11 @@ func (c *Context) RequireChannelName() *Context {
 	return c
 }
 
-func (c *Context) RequireEmail() *Context {
+func (c *Context) SanitizeEmail() *Context {
 	if c.Err != nil {
 		return c
 	}
-
+	c.Params.Email = strings.ToLower(c.Params.Email)
 	if !model.IsValidEmail(c.Params.Email) {
 		c.SetInvalidUrlParam("email")
 	}
@@ -484,17 +496,6 @@ func (c *Context) RequireJobType() *Context {
 
 	if len(c.Params.JobType) == 0 || len(c.Params.JobType) > 32 {
 		c.SetInvalidUrlParam("job_type")
-	}
-	return c
-}
-
-func (c *Context) RequireActionId() *Context {
-	if c.Err != nil {
-		return c
-	}
-
-	if len(c.Params.ActionId) != 26 {
-		c.SetInvalidUrlParam("action_id")
 	}
 	return c
 }

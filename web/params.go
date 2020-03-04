@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package web
 
@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/v5/model"
 )
 
 const (
@@ -74,6 +74,7 @@ type Params struct {
 	LimitBefore            int
 	GroupIDs               string
 	IncludeTotalCount      bool
+	IncludeDeleted         bool
 }
 
 func ParamsFromRequest(r *http.Request) *Params {
@@ -294,6 +295,10 @@ func ParamsFromRequest(r *http.Request) *Params {
 
 	if val, err := strconv.ParseBool(query.Get("include_total_count")); err == nil {
 		params.IncludeTotalCount = val
+	}
+
+	if val, err := strconv.ParseBool(query.Get("include_deleted")); err == nil {
+		params.IncludeDeleted = val
 	}
 
 	return params

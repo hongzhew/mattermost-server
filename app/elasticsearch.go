@@ -1,12 +1,12 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package app
 
 import (
 	"net/http"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/v5/model"
 )
 
 func (a *App) TestElasticsearch(cfg *model.Config) *model.AppError {
@@ -18,7 +18,7 @@ func (a *App) TestElasticsearch(cfg *model.Config) *model.AppError {
 		}
 	}
 
-	esI := a.Elasticsearch
+	esI := a.Elasticsearch()
 	if esI == nil {
 		err := model.NewAppError("TestElasticsearch", "ent.elasticsearch.test_config.license.error", nil, "", http.StatusNotImplemented)
 		return err
@@ -31,7 +31,7 @@ func (a *App) TestElasticsearch(cfg *model.Config) *model.AppError {
 }
 
 func (a *App) PurgeElasticsearchIndexes() *model.AppError {
-	esI := a.Elasticsearch
+	esI := a.Elasticsearch()
 	if esI == nil {
 		err := model.NewAppError("PurgeElasticsearchIndexes", "ent.elasticsearch.test_config.license.error", nil, "", http.StatusNotImplemented)
 		return err

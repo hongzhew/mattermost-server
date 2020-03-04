@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package app
 
@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/services/httpservice"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/services/httpservice"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -389,13 +389,13 @@ func TestSplitWebhookPost(t *testing.T) {
 				Message: strings.Repeat("本", maxPostSize*3/2),
 				Props: map[string]interface{}{
 					"attachments": []*model.SlackAttachment{
-						&model.SlackAttachment{
+						{
 							Text: strings.Repeat("本", 1000),
 						},
-						&model.SlackAttachment{
+						{
 							Text: strings.Repeat("本", 2000),
 						},
-						&model.SlackAttachment{
+						{
 							Text: strings.Repeat("本", model.POST_PROPS_MAX_USER_RUNES-1000),
 						},
 					},
@@ -409,10 +409,10 @@ func TestSplitWebhookPost(t *testing.T) {
 					Message: strings.Repeat("本", maxPostSize/2),
 					Props: map[string]interface{}{
 						"attachments": []*model.SlackAttachment{
-							&model.SlackAttachment{
+							{
 								Text: strings.Repeat("本", 1000),
 							},
-							&model.SlackAttachment{
+							{
 								Text: strings.Repeat("本", 2000),
 							},
 						},
@@ -421,7 +421,7 @@ func TestSplitWebhookPost(t *testing.T) {
 				{
 					Props: map[string]interface{}{
 						"attachments": []*model.SlackAttachment{
-							&model.SlackAttachment{
+							{
 								Text: strings.Repeat("本", model.POST_PROPS_MAX_USER_RUNES-1000),
 							},
 						},
@@ -623,7 +623,7 @@ func TestTriggerOutGoingWebhookWithUsernameAndIconURL(t *testing.T) {
 					assert.Nil(t, webhookPost.Props["override_username"])
 				}
 			case <-time.After(5 * time.Second):
-				t.Fatal("Timeout, webhook response not created as post")
+				require.Fail(t, "Timeout, webhook response not created as post")
 			}
 
 		})
@@ -709,9 +709,9 @@ func TestDoOutgoingWebhookRequest(t *testing.T) {
 		defer server.Close()
 		defer close(releaseHandler)
 
-		th.App.HTTPService.(*httpservice.HTTPServiceImpl).RequestTimeout = 500 * time.Millisecond
+		th.App.HTTPService().(*httpservice.HTTPServiceImpl).RequestTimeout = 500 * time.Millisecond
 		defer func() {
-			th.App.HTTPService.(*httpservice.HTTPServiceImpl).RequestTimeout = httpservice.RequestTimeout
+			th.App.HTTPService().(*httpservice.HTTPServiceImpl).RequestTimeout = httpservice.RequestTimeout
 		}()
 
 		_, err := th.App.doOutgoingWebhookRequest(server.URL, strings.NewReader(""), "application/json")

@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package sqlstore
 
@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/mattermost/gorp"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/store"
 )
 
 type SqlRoleStore struct {
@@ -71,7 +71,7 @@ func (role Role) ToModel() *model.Role {
 	}
 }
 
-func NewSqlRoleStore(sqlStore SqlStore) store.RoleStore {
+func newSqlRoleStore(sqlStore SqlStore) store.RoleStore {
 	s := &SqlRoleStore{sqlStore}
 
 	for _, db := range sqlStore.GetAllConns() {
@@ -85,7 +85,7 @@ func NewSqlRoleStore(sqlStore SqlStore) store.RoleStore {
 	return s
 }
 
-func (s SqlRoleStore) CreateIndexesIfNotExists() {
+func (s SqlRoleStore) createIndexesIfNotExists() {
 }
 
 func (s *SqlRoleStore) Save(role *model.Role) (*model.Role, *model.AppError) {

@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package app
 
@@ -14,13 +14,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/v5/model"
 )
 
 func TestPluginSetting(t *testing.T) {
 	settings := &model.PluginSettings{
 		Plugins: map[string]map[string]interface{}{
-			"test": map[string]interface{}{
+			"test": {
 				"foo": "bar",
 			},
 		},
@@ -31,10 +31,10 @@ func TestPluginSetting(t *testing.T) {
 
 func TestPluginActivated(t *testing.T) {
 	states := map[string]*model.PluginState{
-		"foo": &model.PluginState{
+		"foo": {
 			Enable: true,
 		},
-		"bar": &model.PluginState{
+		"bar": {
 			Enable: false,
 		},
 	}
@@ -43,12 +43,34 @@ func TestPluginActivated(t *testing.T) {
 	assert.False(t, pluginActivated(states, "none"))
 }
 
+func TestPluginVersion(t *testing.T) {
+	plugins := []*model.BundleInfo{
+		{
+			Manifest: &model.Manifest{
+				Id:      "test.plugin",
+				Version: "1.2.3",
+			},
+		},
+		{
+			Manifest: &model.Manifest{
+				Id:      "test.plugin2",
+				Version: "4.5.6",
+			},
+		},
+	}
+	assert.Equal(t, "1.2.3", pluginVersion(plugins, "test.plugin"))
+	assert.Equal(t, "4.5.6", pluginVersion(plugins, "test.plugin2"))
+	assert.Empty(t, pluginVersion(plugins, "unknown.plugin"))
+}
+
 func TestDiagnostics(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 
-	th := Setup(t).InitBasic()
+	th := SetupWithCustomConfig(t, func(config *model.Config) {
+		*config.PluginSettings.Enable = false
+	})
 	defer th.TearDown()
 
 	type payload struct {
@@ -127,6 +149,58 @@ func TestDiagnostics(t *testing.T) {
 		}
 	})
 
+	// Plugins remain disabled at this point
+	t.Run("SendDailyDiagnosticsPluginsDisabled", func(t *testing.T) {
+		th.App.sendDailyDiagnostics(true)
+
+		var info []string
+		// Collect the info sent.
+	Loop:
+		for {
+			select {
+			case result := <-data:
+				assertPayload(t, result, "", nil)
+				info = append(info, result.Batch[0].Event)
+			case <-time.After(time.Second * 1):
+				break Loop
+			}
+		}
+
+		for _, item := range []string{
+			TRACK_CONFIG_SERVICE,
+			TRACK_CONFIG_TEAM,
+			TRACK_CONFIG_SQL,
+			TRACK_CONFIG_LOG,
+			TRACK_CONFIG_NOTIFICATION_LOG,
+			TRACK_CONFIG_FILE,
+			TRACK_CONFIG_RATE,
+			TRACK_CONFIG_EMAIL,
+			TRACK_CONFIG_PRIVACY,
+			TRACK_CONFIG_OAUTH,
+			TRACK_CONFIG_LDAP,
+			TRACK_CONFIG_COMPLIANCE,
+			TRACK_CONFIG_LOCALIZATION,
+			TRACK_CONFIG_SAML,
+			TRACK_CONFIG_PASSWORD,
+			TRACK_CONFIG_CLUSTER,
+			TRACK_CONFIG_METRICS,
+			TRACK_CONFIG_SUPPORT,
+			TRACK_CONFIG_NATIVEAPP,
+			TRACK_CONFIG_EXPERIMENTAL,
+			TRACK_CONFIG_ANALYTICS,
+			TRACK_CONFIG_PLUGIN,
+			TRACK_ACTIVITY,
+			TRACK_SERVER,
+			TRACK_CONFIG_MESSAGE_EXPORT,
+			// TRACK_PLUGINS,
+		} {
+			require.Contains(t, info, item)
+		}
+	})
+
+	// Enable plugins for the remainder of the tests.
+	th.App.UpdateConfig(func(cfg *model.Config) { *cfg.PluginSettings.Enable = true })
+
 	t.Run("SendDailyDiagnostics", func(t *testing.T) {
 		th.App.sendDailyDiagnostics(true)
 
@@ -163,6 +237,7 @@ func TestDiagnostics(t *testing.T) {
 			TRACK_CONFIG_METRICS,
 			TRACK_CONFIG_SUPPORT,
 			TRACK_CONFIG_NATIVEAPP,
+			TRACK_CONFIG_EXPERIMENTAL,
 			TRACK_CONFIG_ANALYTICS,
 			TRACK_CONFIG_PLUGIN,
 			TRACK_ACTIVITY,

@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package sqlstore
 
@@ -7,16 +7,16 @@ import (
 	"net/http"
 
 	"github.com/mattermost/gorp"
-	"github.com/mattermost/mattermost-server/mlog"
-	"github.com/mattermost/mattermost-server/model"
-	"github.com/mattermost/mattermost-server/store"
+	"github.com/mattermost/mattermost-server/v5/mlog"
+	"github.com/mattermost/mattermost-server/v5/model"
+	"github.com/mattermost/mattermost-server/v5/store"
 )
 
 type SqlReactionStore struct {
 	SqlStore
 }
 
-func NewSqlReactionStore(sqlStore SqlStore) store.ReactionStore {
+func newSqlReactionStore(sqlStore SqlStore) store.ReactionStore {
 	s := &SqlReactionStore{sqlStore}
 
 	for _, db := range sqlStore.GetAllConns() {
@@ -29,7 +29,7 @@ func NewSqlReactionStore(sqlStore SqlStore) store.ReactionStore {
 	return s
 }
 
-func (s SqlReactionStore) CreateIndexesIfNotExists() {
+func (s SqlReactionStore) createIndexesIfNotExists() {
 }
 
 func (s *SqlReactionStore) Save(reaction *model.Reaction) (*model.Reaction, *model.AppError) {
@@ -160,8 +160,8 @@ func (s *SqlReactionStore) PermanentDeleteBatch(endTime int64, limit int64) (int
 		return 0, model.NewAppError("SqlReactionStore.PermanentDeleteBatch", "store.sql_reaction.permanent_delete_batch.app_error", nil, ""+err.Error(), http.StatusInternalServerError)
 	}
 
-	rowsAffected, err1 := sqlResult.RowsAffected()
-	if err1 != nil {
+	rowsAffected, err := sqlResult.RowsAffected()
+	if err != nil {
 		return 0, model.NewAppError("SqlReactionStore.PermanentDeleteBatch", "store.sql_reaction.permanent_delete_batch.app_error", nil, ""+err.Error(), http.StatusInternalServerError)
 	}
 	return rowsAffected, nil

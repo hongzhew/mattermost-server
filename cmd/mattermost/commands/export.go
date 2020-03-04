@@ -1,5 +1,5 @@
-// Copyright (c) 2016-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package commands
 
@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/mattermost/mattermost-server/model"
+	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -117,7 +117,7 @@ func scheduleExportCmdF(command *cobra.Command, args []string) error {
 		return errors.New("timeoutSeconds must be a positive integer")
 	}
 
-	if messageExportI := a.MessageExport; messageExportI != nil {
+	if messageExportI := a.MessageExport(); messageExportI != nil {
 		ctx := context.Background()
 		if timeoutSeconds > 0 {
 			var cancel context.CancelFunc
@@ -152,11 +152,11 @@ func buildExportCmdF(format string) func(command *cobra.Command, args []string) 
 			return errors.New("exportFrom must be a positive integer")
 		}
 
-		if a.MessageExport == nil {
-			CommandPrettyPrintln("MessageExport feature not available")
+		if a.MessageExport() == nil {
+			return errors.New("message export feature not available")
 		}
 
-		err2 := a.MessageExport.RunExport(format, startTime)
+		err2 := a.MessageExport().RunExport(format, startTime)
 		if err2 != nil {
 			return err2
 		}

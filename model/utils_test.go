@@ -1,5 +1,5 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// See LICENSE.txt for license information.
 
 package model
 
@@ -181,16 +181,6 @@ func TestIsValidEmail(t *testing.T) {
 		t.Run(testCase.Input, func(t *testing.T) {
 			assert.Equal(t, testCase.Expected, IsValidEmail(testCase.Input))
 		})
-	}
-}
-
-func TestValidLower(t *testing.T) {
-	if !IsLower("corey+test@hulen.com") {
-		t.Error("should be valid")
-	}
-
-	if IsLower("Corey+test@hulen.com") {
-		t.Error("should be invalid")
 	}
 }
 
