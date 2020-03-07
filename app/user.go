@@ -2361,3 +2361,30 @@ func (a *App) invalidateUserCacheAndPublish(userId string) {
 	message.Add("user", user)
 	a.Publish(message)
 }
+
+// CreateCasUser returns a new created user object
+func (a *App) CreateCasUser(userName string) (*model.User, *model.AppError) {
+	userEmail := userName + "@risesoft.net"
+    user := model.User{Nickname: userName, Username: userName, Locale: "zh-CN",Email:userEmail}
+	user.MakeNonNil()
+
+	ruser, err := a.Srv().Store.User().Save(&user)
+	if err != nil {
+		mlog.Error("Couldn't save the user", mlog.Err(err))
+		return nil, err
+	}
+	// Assign System Admin role to mattermost user from Y9 CAS
+	if userName == "mattermost" {
+		if _, err := a.UpdateUserRoles(ruser.Id, "system_user system_admin", false); err != nil {
+			mlog.Error("Unable to make user system admin. Error: ", mlog.Err(err))
+		}
+	}
+
+	pref := model.Preference{UserId: ruser.Id, Category: model.PREFERENCE_CATEGORY_TUTORIAL_STEPS, Name: ruser.Id, Value: "0"}
+	if err := a.Srv().Store.Preference().Save(&model.Preferences{pref}); err != nil {
+		mlog.Error("Encountered error saving tutorial preference", mlog.Err(err))
+	}
+
+	ruser.Sanitize(map[string]bool{})
+	return ruser, nil
+}
