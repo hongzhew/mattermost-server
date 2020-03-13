@@ -2362,7 +2362,7 @@ func (a *App) invalidateUserCacheAndPublish(userId string) {
 	a.Publish(message)
 }
 
-// CreateCasUser returns a new created user object
+// // CreateCasUser returns a new created user object
 func (a *App) CreateCasUser(userName string) (*model.User, *model.AppError) {
 	userEmail := userName + "@risesoft.net"
     user := model.User{Nickname: userName, Username: userName, Locale: "zh-CN",Email:userEmail}
